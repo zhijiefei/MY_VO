@@ -6,6 +6,7 @@ long unsigned int Frame::nNextId=0;   //因为nNextId是static变量，所以必
 double Frame::DTotaltimems=0;
 bool Frame::mbInitialComputations=true;
 float Frame::cx, Frame::cy, Frame::fx, Frame::fy, Frame::invfx, Frame::invfy;
+float Frame::mnMinX, Frame::mnMinY, Frame::mnMaxX, Frame::mnMaxY;
 
     Frame::Frame(){}
 

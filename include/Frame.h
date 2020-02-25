@@ -108,6 +108,15 @@ namespace my_vo
         vector<float> mvLevelSigma2;
         vector<float> mvInvLevelSigma2;
         
+        
+            // Undistorted Image Bounds (computed once).
+    // 用于确定画格子时的边界
+    static float mnMinX;
+    static float mnMaxX;
+    static float mnMinY;
+    static float mnMaxY;
+        
+        
 	//在每帧初始被创建的时候这是默认是true，该变量是为了在初始创建帧的时候进行对当前帧的固有性质进行保护（图像边界点，中心点的纠正
 	//，图像边缘尺寸，相机内参）在帧被创建后不能再进行对相关参数进行修改，因此进行保护
         static bool mbInitialComputations;

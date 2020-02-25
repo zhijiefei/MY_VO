@@ -256,7 +256,7 @@ TicToc findmachetime;
 	  
 	  if(u<CurrentFrame.mnMinX||u>CurrentFrame.mnMaxX)
 	    continue;
-	  if(v<CurrentFrame.mnMinY||v>CurrentFrame.mnMacX)
+	  if(v<CurrentFrame.mnMinY||v>CurrentFrame.mnMaxX)
 	    continue;
 	  
 	  int nLastOctave=LastFrame.mvKeys[i].octave;
