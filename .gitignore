@@ -46,5 +46,6 @@ _deps
 #ORB
 Vocabulary
 *.kdev4
-Examples/RGB-D/rgbd_a
-Examples/RGB-D/rgbd_run
+rgbd_a
+rgbd_run
+
