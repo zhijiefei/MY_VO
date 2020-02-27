@@ -7,7 +7,7 @@ double Frame::DTotaltimems=0;
 bool Frame::mbInitialComputations=true;
 float Frame::cx, Frame::cy, Frame::fx, Frame::fy, Frame::invfx, Frame::invfy;
 float Frame::mnMinX, Frame::mnMinY, Frame::mnMaxX, Frame::mnMaxY;
-
+float Frame::mfGridElementWidthInv, Frame::mfGridElementHeightInv;
     Frame::Frame(){}
 
 
@@ -21,6 +21,7 @@ float Frame::mnMinX, Frame::mnMinY, Frame::mnMaxX, Frame::mnMaxY;
     mK(frame.mK.clone()),
     mbf(frame.mbf),
     mb(frame.mb),
+    mThDepth(frame.mThDepth),
     mDistCoef(frame.mDistCoef.clone()),
     mGray(frame.mGray.clone()),
     N(frame.N),
@@ -253,5 +254,70 @@ void Frame::UpdatePoseMatrices()
     // mOw, 即世界坐标系下世界坐标系到相机坐标系间的向量, 向量方向由世界坐标系指向相机坐标系
     mOw = -mRcw.t()*mtcw;
 }
+
+/**
+ * @brief 找到在 以x,y为中心,边长为2r的方形内且在[minLevel, maxLevel]的特征点
+ * @param x        图像坐标u
+ * @param y        图像坐标v
+ * @param r        边长(windousize),应该是搜索特征匹配点的范围
+ * @param minLevel 最小尺度
+ * @param maxLevel 最大尺度
+ * @return         满足条件的特征点的序号
+ */
+vector<size_t> Frame::GetFeaturesInArea(const float &x, const float  &y, const float  &r, const int minLevel, const int maxLevel) const
+{
+    vector<size_t> vIndices;
+    vIndices.reserve(N);
+
+    const int nMinCellX = max(0,(int)floor((x-mnMinX-r)*mfGridElementWidthInv));
+    if(nMinCellX>=FRAME_GRID_COLS)
+        return vIndices;
+
+    const int nMaxCellX = min((int)FRAME_GRID_COLS-1,(int)ceil((x-mnMinX+r)*mfGridElementWidthInv));
+    if(nMaxCellX<0)
+        return vIndices;
+
+    const int nMinCellY = max(0,(int)floor((y-mnMinY-r)*mfGridElementHeightInv));
+    if(nMinCellY>=FRAME_GRID_ROWS)
+        return vIndices;
+
+    const int nMaxCellY = min((int)FRAME_GRID_ROWS-1,(int)ceil((y-mnMinY+r)*mfGridElementHeightInv));
+    if(nMaxCellY<0)
+        return vIndices;
+
+    const bool bCheckLevels = (minLevel>0) || (maxLevel>=0);
+
+    for(int ix = nMinCellX; ix<=nMaxCellX; ix++)
+    {
+        for(int iy = nMinCellY; iy<=nMaxCellY; iy++)
+        {
+            const vector<size_t> vCell = mGrid[ix][iy];
+            if(vCell.empty())
+                continue;
+
+            for(size_t j=0, jend=vCell.size(); j<jend; j++)
+            {
+                const cv::KeyPoint &kpUn = mvKeysUn[vCell[j]];
+                if(bCheckLevels)
+                {
+                    if(kpUn.octave<minLevel)
+                        continue;
+                    if(maxLevel>=0)
+                        if(kpUn.octave>maxLevel)
+                            continue;
+                }
+
+                const float distx = kpUn.pt.x-x;
+                const float disty = kpUn.pt.y-y;
+
+                if(fabs(distx)<r && fabs(disty)<r)
+                    vIndices.push_back(vCell[j]);
+            }
+        }
+    }
+
+    return vIndices;
+}
+
 }
 

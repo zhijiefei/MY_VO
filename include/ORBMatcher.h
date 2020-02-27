@@ -25,7 +25,7 @@ class ORBMatcher
     public:
     static const int TH_LOW;
     static const int TH_HIGH;
-    
+    static const int HISTO_LENGTH;
     //是否进行方向检测
     bool mbCheckOrientation;
 

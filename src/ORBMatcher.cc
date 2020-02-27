@@ -5,6 +5,7 @@ namespace my_vo
 
      const int ORBMatcher::TH_LOW=50;
      const int ORBMatcher::TH_HIGH=100;
+     const int ORBmatcher::HISTO_LENGTH = 30;
     ORBMatcher::ORBMatcher(float nnratio,bool CheckOrientation):mbCheckOrientation(CheckOrientation),mfNNratio(nnratio){}
     
 
@@ -208,7 +209,8 @@ TicToc findmachetime;
         }
      }
     }
-
+//因为只有在对关键帧的操作（创建，删减，更新）中，才会产生更新稳定的世界地图点，涉及到地图点的观测,描述子的更新，等一些属性的更新都必须要有关键帧的功能
+//所以该匹配方案也必须要协同关键帧方案才能用
    int ORBMatcher::SearchByProjection(Frame &CurrentFrame, const Frame &LastFrame, const float th)
   {
     int nmatches=0;
@@ -235,16 +237,16 @@ TicToc findmachetime;
       MapPoint * pMP=LastFrame.mvpMapPoints[i];
       if(pMP)
       {
-	if(!LastFrame.mvbOutlier[i])
-	{
-	  cv::Mat x3Dw=pMP->getWorldPos();
-	  cv::Mat x3Dc=Rcw*x3Dw+tcw;
+	    if(!LastFrame.mvbOutlier[i])
+	    {
+	     cv::Mat x3Dw=pMP->getWorldPos();
+	     cv::Mat x3Dc=Rcw*x3Dw+tcw;
 	  
-	  const float xc=x3Dc.at<float>(0);
-	  const float yc=x3Dc.at<float>(1);
-	  const float zc=x3Dc.at<float>(2);
+	     const float xc=x3Dc.at<float>(0);
+	     const float yc=x3Dc.at<float>(1);
+	     const float zc=x3Dc.at<float>(2);
 	  
-	  const float invzc=1/zc;
+	     const float invzc=1/zc;
 	  
 	  //在摄像机后方的点剔除掉
 	  if(invzc<0)
@@ -262,12 +264,115 @@ TicToc findmachetime;
 	  int nLastOctave=LastFrame.mvKeys[i].octave;
 	  
 	  float radius = th*CurrentFrame.mvScaleFactors[nLastOctave];
+      
+	  vector<size_t> vIndices2;
+
+       // NOTE 尺度越大,图像越小
+       // 以下可以这么理解，例如一个有一定面积的圆点，在某个尺度n下它是一个特征点
+       // 当前进时，圆点的面积增大，在某个尺度m下它是一个特征点，由于面积增大，则需要在更高的尺度（缩放因子）下才能检测出来
+       // 因此m>=n，对应前进的情况，nCurOctave>=nLastOctave。后退的情况可以类推
+      
+       if(bForward) // 前进,则上一帧兴趣点在所在的尺度nLastOctave<=nCurOctave
+          vIndices2 = CurrentFrame.GetFeaturesInArea(u,v, radius, nLastOctave);//maxOctave=-1
+       else if(bBackward) // 后退,则上一帧兴趣点在所在的尺度0<=nCurOctave<=nLastOctave
+          vIndices2 = CurrentFrame.GetFeaturesInArea(u,v, radius, 0, nLastOctave);
+        else // 在[nLastOctave-1, nLastOctave+1]中搜索
+          vIndices2 = CurrentFrame.GetFeaturesInArea(u,v, radius, nLastOctave-1, nLastOctave+1);
+        
+        if(vIndices2.empty())
+           continue;
+        //因为只有在对关键帧的操作（创建，删减，更新）中，才会产生更新稳定的世界地图点，涉及到地图点的观测,描述子的更新，等一些属性的更新都必须要有关键帧的功能
+        const cv::Mat dMP = pMP->GetDescriptor();
+       
+       int bestDist = 256;
+       int bestIdx2 = -1;
 	  
-	  
-	}
+                     // 遍历满足条件的特征点
+       for(vector<size_t>::const_iterator vit=vIndices2.begin(), vend=vIndices2.end(); vit!=vend; vit++)
+       {
+        // 如果该特征点已经有对应的MapPoint了,则退出该次循环
+          const size_t i2 = *vit;
+          if(CurrentFrame.mvpMapPoints[i2])
+              //因为只有在对关键帧的操作（创建，删减，更新）中，才会产生更新稳定的世界地图点，涉及到地图点的观测,描述子的更新，等一些属性的更新都必须要有关键帧的功能
+             if(CurrentFrame.mvpMapPoints[i2]->Observations()>0)
+                 continue;
+
+          if(CurrentFrame.mvuRight[i2]>0)
+          {
+             // 双目和rgbd的情况，需要保证右图的点也在搜索半径以内
+              const float ur = u - CurrentFrame.mbf*invzc;
+              //保证误差值在半径范围之内
+              const float er = fabs(ur - CurrentFrame.mvuRight[i2]);
+              if(er>radius)
+                 continue;
+           }
+
+           const cv::Mat &d = CurrentFrame.mDescriptors.row(i2);
+
+           const int dist = DescriptorDistance(dMP,d);
+
+           if(dist<bestDist)
+            {
+                 bestDist=dist;
+                 bestIdx2=i2;
+             }
+           if(bestDist<=TH_HIGH)
+            {
+                    CurrentFrame.mvpMapPoints[bestIdx2]=pMP; // 为当前帧添加MapPoint
+                    nmatches++;
+
+                    if(mbCheckOrientation)
+                    {
+		      //理论上，两幅图相同的特征点他们的特征点方向应该是一样的（两个帧都是水平的情况下）
+		      //那么前后的相同特征点的方向之差就可以知道图像进行了多少度的旋转
+                        float rot = LastFrame.mvKeysUn[i].angle-CurrentFrame.mvKeysUn[bestIdx2].angle;
+                        if(rot<0.0)
+                            rot+=360.0f;
+			//返回最接近的整数值
+			//这里应该是相当于另一种简单思想绘制直方图，如把360度分成12份，对于每一个rot（图像旋转的角度）进行分类
+			//只不过这里需要每一次进行rot值的判断（如果330<rot<360很可能需要判断12次才知道归属哪一类），这样时间消耗
+			//会增加
+			//采用下面方法的目的是解决这个时间消耗问题，因为我们只是为了知道某些区间上出现可能情况最多的点对而已，所以
+			//直接把rot值除上12，并取这值的近似整数，从这里可以看到，这个直方图并不是12份了，而是30份（360/12=30）,rot
+			//值非常接近的的点对情况就会分配到同一个类里面，取3个最大类中的点对作为这次的匹配点对
+                        int bin = round(rot*factor);
+                        if(bin==HISTO_LENGTH)//rot等于360度，相当于没转
+                            bin=0;
+			//把bin的值固定在0<=bin<30之间，对于角度差太大的点对则会终止整个程序（这会不会太严格了？为什么非要终止整个程序）
+                        assert(bin>=0 && bin<HISTO_LENGTH);
+			//用所有的特征点对计算以图像旋转多少度作为条件的直方图
+			//真理总是掌握在大多数点对手上
+			//那么直方图中最高的那一范围就是图像旋转角度的最可能值
+			//那么不在这个范围内的点对误匹配的概率就很大，因此就丢弃掉
+                        rotHist[bin].push_back(bestIdx2);
+                    }
+            }
       }
     }
-    
+  }
+}
+    //Apply rotation consistency
+    if(mbCheckOrientation)
+    {
+        int ind1=-1;
+        int ind2=-1;
+        int ind3=-1;
+
+	//保留最高的那三条，这3个角度是最接近真实旋转角度的，所以保留这些点对
+        ComputeThreeMaxima(rotHist,HISTO_LENGTH,ind1,ind2,ind3);
+
+        for(int i=0; i<HISTO_LENGTH; i++)
+        {
+            if(i!=ind1 && i!=ind2 && i!=ind3)
+            {
+                for(size_t j=0, jend=rotHist[i].size(); j<jend; j++)
+                {
+                    CurrentFrame.mvpMapPoints[rotHist[i][j]]=static_cast<MapPoint*>(NULL);
+                    nmatches--;
+                }
+            }
+        }
+    }    
     return 0;
   }
 }

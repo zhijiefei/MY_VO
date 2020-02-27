@@ -1,0 +1,4 @@
+#ifndef KEYFRAMEDATABASE_H
+#define KEYFRAMEDATABASE_H
+
+#endif

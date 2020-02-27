@@ -12,7 +12,8 @@
 using namespace std;
 namespace my_vo
 {
-  
+#define FRAME_GRID_ROWS 48
+#define FRAME_GRID_COLS 64
   class MapPoint;
     class Frame
     {
@@ -39,7 +40,9 @@ namespace my_vo
 	// Backprojects a keypoint (if stereo/depth info available) into 3D world coordinates.
        cv::Mat UnprojectStereo(const int &i);
 	
-	
+       vector<size_t> GetFeaturesInArea(const float &x, const float  &y, const float  &r, const int minLevel=-1, const int maxLevel=-1) const; 
+       
+       
 	void SetPose(cv::Mat Tcw);
 	void UpdatePoseMatrices();
 	
@@ -77,7 +80,10 @@ namespace my_vo
         //RGBD来说，摄像头和IR设备的基线
         //其中两个种情况都可以通过mbf/fx得到
         float mb;
-
+    // Threshold close/far points. Close points are inserted from 1 view.
+    // Far points are inserted as in the monocular case from 2 views.
+    // 判断远近点的阈值
+    float mThDepth;
         cv::Mat mDistCoef;   //校正系数矩阵
 
         cv::Mat mGray;
@@ -93,11 +99,24 @@ namespace my_vo
         //特征点的描述子
         cv::Mat mDescriptors;
 	
+        
+    // MapPoints associated to keypoints, NULL pointer if no association.
     // 每个特征点对应的MapPoint
-     std::vector<MapPoint*> mvpMapPoints;
-     
+    std::vector<MapPoint*> mvpMapPoints;
+
          // 外点
     std::vector<bool> mvbOutlier;
+    
+    // Keypoints are assigned to cells in a grid to reduce matching complexity when projecting MapPoints.
+    // 坐标乘以mfGridElementWidthInv和mfGridElementHeightInv就可以确定在哪个格子
+    static float mfGridElementWidthInv;
+    static float mfGridElementHeightInv;
+        // 每个格子分配的特征点数，将图像分成格子，保证提取的特征点比较均匀
+    // 用于GetFeaturesInArea
+    // FRAME_GRID_ROWS 48
+    // FRAME_GRID_COLS 64
+    std::vector<std::size_t> mGrid[FRAME_GRID_COLS][FRAME_GRID_ROWS];
+    
             // Scale pyramid info.
             //在特征提取器被创建时，它的构造函数中已经进行了这些参数的计算，都已经计算出来，在构造函数中进行填充就可以
         int mnScaleLevels;//图像提金字塔的层数

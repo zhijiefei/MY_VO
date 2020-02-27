@@ -67,13 +67,13 @@ src/ORBMatcher.cc
 #src/FrameDrawer.cc
 src/Converter.cc
 src/MapPoint.cc
-#src/KeyFrame.cc
-#src/Map.cc
+src/KeyFrame.cc
+src/Map.cc
 #src/MapDrawer.cc
 src/Optimizer.cc
 #src/PnPsolver.cc
 src/Frame.cc
-#src/KeyFrameDatabase.cc
+src/KeyFrameDatabase.cc
 #src/Sim3Solver.cc
 #src/Initializer.cc
 #src/Viewer.cc
